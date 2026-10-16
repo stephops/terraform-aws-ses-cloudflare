@@ -18,6 +18,17 @@ variable "cloudflare_zone_id" {
   }
 }
 
+variable "dkim_key_length" {
+  description = "Key length for Easy DKIM: RSA_2048_BIT or RSA_1024_BIT."
+  type        = string
+  default     = "RSA_2048_BIT"
+
+  validation {
+    condition     = contains(["RSA_2048_BIT", "RSA_1024_BIT"], var.dkim_key_length)
+    error_message = "dkim_key_length must be RSA_2048_BIT or RSA_1024_BIT."
+  }
+}
+
 variable "mail_from_subdomain" {
   description = "Subdomain used as custom MAIL FROM domain (<subdomain>.<domain>). Set to null to use the SES default."
   type        = string
