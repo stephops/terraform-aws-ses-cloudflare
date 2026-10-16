@@ -2,6 +2,14 @@
 # Not part of the default `terraform test`; run via `make test-integration`.
 # Inputs: TF_VAR_domain, TF_VAR_cloudflare_zone_id, AWS_REGION, AWS credentials, CLOUDFLARE_API_TOKEN.
 
+variable "domain" {
+  type = string
+}
+
+variable "cloudflare_zone_id" {
+  type = string
+}
+
 provider "aws" {}
 
 provider "cloudflare" {}
@@ -10,7 +18,9 @@ run "apply_full_setup" {
   command = apply
 
   variables {
-    dns_ttl = 300
+    domain             = var.domain
+    cloudflare_zone_id = var.cloudflare_zone_id
+    dns_ttl            = 300
 
     dmarc = {
       policy = "none"
