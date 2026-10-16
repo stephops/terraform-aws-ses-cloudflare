@@ -115,6 +115,37 @@ run "default_policy_name_fits_iam_limit" {
   }
 }
 
+run "sandbox_recipients_covers_all_identities_with_from_condition" {
+  command = apply
+
+  variables {
+    sender = {
+      from_addresses     = ["noreply@example.com"]
+      sandbox_recipients = true
+    }
+  }
+
+  assert {
+    condition     = contains(jsondecode(aws_iam_policy.sender[0].policy).Statement[0].Resource, "arn:aws:ses:eu-central-1:123456789012:identity/*")
+    error_message = "Sandbox mode must allow all identities of the account as resource."
+  }
+
+  assert {
+    condition     = jsondecode(aws_iam_policy.sender[0].policy).Statement[0].Condition.StringLike["ses:FromAddress"] == ["noreply@example.com"]
+    error_message = "Sandbox mode must keep the from address restriction."
+  }
+}
+
+run "rejects_sandbox_recipients_without_from_addresses" {
+  command = plan
+
+  variables {
+    sender = { sandbox_recipients = true }
+  }
+
+  expect_failures = [var.sender]
+}
+
 run "rejects_invalid_from_address" {
   command = plan
 

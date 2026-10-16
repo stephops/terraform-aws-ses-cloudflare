@@ -7,12 +7,15 @@ locals {
   # SES v2 SendEmail also covers raw MIME content; SendRawEmail is only used by the v1 API and SMTP.
   sender_actions = local.create_sender ? (var.sender.allow_v1_raw_and_smtp ? ["ses:SendEmail", "ses:SendRawEmail"] : ["ses:SendEmail"]) : []
 
+  # In the SES sandbox the recipient identity is authorized too, so the policy has to cover all identities of the account.
+  sender_sandbox_resources = local.create_sender && try(var.sender.sandbox_recipients, false) ? [replace(aws_sesv2_email_identity.this.arn, "/identity\\/.*$/", "identity/*")] : []
+
   sender_statement = local.create_sender ? merge(
     {
       Sid      = "SendFromIdentity"
       Effect   = "Allow"
       Action   = local.sender_actions
-      Resource = concat([aws_sesv2_email_identity.this.arn], var.sender.configuration_set_arns)
+      Resource = concat([aws_sesv2_email_identity.this.arn], local.sender_sandbox_resources, var.sender.configuration_set_arns)
     },
     length(var.sender.from_addresses) > 0 ? {
       Condition = {

@@ -65,7 +65,9 @@ New AWS accounts are in the SES sandbox and can only send to verified addresses.
 has to be requested per region:
 [Request production access](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html).
 In the sandbox SES also checks the permission against the recipient identity, so a policy that is
-restricted to the sender identity can be denied there. This goes away with production access.
+restricted to the sender identity is denied there. Set `sandbox_recipients = true` in `sender` while
+the account is in the sandbox: the policy then covers all identities of the account and relies on the
+`ses:FromAddress` condition, which is required in this mode. Switch it off after production access.
 
 The identity lives in the region of the AWS provider. For more than one sending region use one
 module instance per region. The default policy name contains the region, because IAM names are
@@ -132,7 +134,7 @@ No modules.
 | <a name="input_dns_ttl"></a> [dns\_ttl](#input\_dns\_ttl) | TTL in seconds for all DNS records. 1 means automatic in Cloudflare. | `number` | `3600` | no |
 | <a name="input_mail_from_behavior_on_mx_failure"></a> [mail\_from\_behavior\_on\_mx\_failure](#input\_mail\_from\_behavior\_on\_mx\_failure) | What SES does if the MAIL FROM MX record cannot be found: USE\_DEFAULT\_VALUE or REJECT\_MESSAGE. | `string` | `"USE_DEFAULT_VALUE"` | no |
 | <a name="input_mail_from_subdomain"></a> [mail\_from\_subdomain](#input\_mail\_from\_subdomain) | Subdomain used as custom MAIL FROM domain (<subdomain>.<domain>). Set to null to use the SES default. | `string` | `"bounce"` | no |
-| <a name="input_sender"></a> [sender](#input\_sender) | Optional IAM policy that allows sending only from this identity. Attach it to your own role or user. Set to null to skip. | <pre>object({<br/>    policy_name            = optional(string)<br/>    from_addresses         = optional(list(string), [])<br/>    configuration_set_arns = optional(list(string), [])<br/>    allow_v1_raw_and_smtp  = optional(bool, false)<br/>  })</pre> | `null` | no |
+| <a name="input_sender"></a> [sender](#input\_sender) | Optional IAM policy that allows sending only from this identity. Attach it to your own role or user. Set to null to skip. | <pre>object({<br/>    policy_name            = optional(string)<br/>    from_addresses         = optional(list(string), [])<br/>    configuration_set_arns = optional(list(string), [])<br/>    allow_v1_raw_and_smtp  = optional(bool, false)<br/>    sandbox_recipients     = optional(bool, false)<br/>  })</pre> | `null` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | Tags applied to all AWS resources that support them. | `map(string)` | `{}` | no |
 
 ## Outputs

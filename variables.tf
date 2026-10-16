@@ -96,8 +96,14 @@ variable "sender" {
     from_addresses         = optional(list(string), [])
     configuration_set_arns = optional(list(string), [])
     allow_v1_raw_and_smtp  = optional(bool, false)
+    sandbox_recipients     = optional(bool, false)
   })
   default = null
+
+  validation {
+    condition     = var.sender == null || !try(var.sender.sandbox_recipients, false) || length(try(var.sender.from_addresses, [])) > 0
+    error_message = "sender.sandbox_recipients requires sender.from_addresses, otherwise the policy would allow sending as any identity."
+  }
 
   validation {
     condition = var.sender == null || alltrue([
