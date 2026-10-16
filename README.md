@@ -16,3 +16,6 @@ DKIM, custom MAIL FROM, SPF and DMARC records are written straight into Cloudfla
 ## License
 
 MIT
+
+<!-- BEGIN_TF_DOCS -->
+<!-- END_TF_DOCS -->
