@@ -90,13 +90,18 @@ variable "dmarc" {
 }
 
 variable "sender" {
-  description = "Optional IAM policy that allows sending only from this identity. Set to null to skip."
+  description = "Optional IAM policy that allows sending only from this identity. Attach it to your own role or user. Set to null to skip."
   type = object({
     policy_name    = optional(string)
     from_addresses = optional(list(string), [])
     allow_send_raw = optional(bool, true)
   })
   default = null
+
+  validation {
+    condition     = var.sender == null || alltrue([for a in try(var.sender.from_addresses, []) : can(regex("^[^@\\s]+@[^@\\s]+$", a))])
+    error_message = "sender.from_addresses must be e-mail addresses; wildcards like *@example.com are allowed."
+  }
 }
 
 variable "dns_ttl" {

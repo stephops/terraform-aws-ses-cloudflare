@@ -32,3 +32,13 @@ output "dmarc_record" {
   description = "The published DMARC record value, or null if DMARC is not managed by this module."
   value       = local.dmarc_record
 }
+
+output "sender_policy_arn" {
+  description = "ARN of the IAM sender policy, or null if not created."
+  value       = local.create_sender ? aws_iam_policy.sender[0].arn : null
+}
+
+output "sender_policy_json" {
+  description = "JSON of the IAM sender policy, e.g. to embed it inline elsewhere; null if not created."
+  value       = local.sender_policy_json
+}
