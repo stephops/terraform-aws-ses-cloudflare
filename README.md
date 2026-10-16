@@ -10,7 +10,7 @@ that only allows sending from that identity. Works with Terraform and OpenTofu.
 
 ```hcl
 module "ses_sender" {
-  source  = "StephOps/ses-cloudflare/aws"
+  source  = "stephops/ses-cloudflare/aws"
   version = "~> 0.1.0"
 
   domain             = "example.com"
