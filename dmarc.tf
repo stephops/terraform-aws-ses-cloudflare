@@ -20,5 +20,5 @@ resource "cloudflare_dns_record" "dmarc" {
   type    = "TXT"
   content = "\"${local.dmarc_record}\""
   ttl     = var.dns_ttl
-  comment = "DMARC policy for ${var.domain}"
+  comment = substr("DMARC policy for ${var.domain}", 0, 100)
 }

@@ -11,8 +11,7 @@ override_resource {
   values = {
     arn = "arn:aws:ses:eu-central-1:123456789012:identity/example.com"
     dkim_signing_attributes = {
-      next_signing_key_length = "RSA_2048_BIT"
-      tokens                  = ["tokena", "tokenb", "tokenc"]
+      tokens = ["tokena", "tokenb", "tokenc"]
     }
   }
 }
@@ -40,18 +39,23 @@ run "sender_policy_scoped_to_identity" {
   }
 
   assert {
-    condition     = aws_iam_policy.sender[0].name == "ses-send-example-com"
-    error_message = "Default policy name must be derived from the domain."
+    condition     = aws_iam_policy.sender[0].name == "ses-send-eu-central-1-example-com"
+    error_message = "Default policy name must contain region and domain, IAM names are global."
   }
 
   assert {
-    condition     = jsondecode(aws_iam_policy.sender[0].policy).Statement[0].Resource == "arn:aws:ses:eu-central-1:123456789012:identity/example.com"
+    condition     = jsondecode(aws_iam_policy.sender[0].policy).Statement[0].Resource == ["arn:aws:ses:eu-central-1:123456789012:identity/example.com"]
     error_message = "Policy must be scoped to the identity ARN."
   }
 
   assert {
-    condition     = toset(jsondecode(aws_iam_policy.sender[0].policy).Statement[0].Action) == toset(["ses:SendEmail", "ses:SendRawEmail"])
-    error_message = "Policy must allow SendEmail and SendRawEmail by default."
+    condition     = jsondecode(aws_iam_policy.sender[0].policy).Statement[0].Action == ["ses:SendEmail"]
+    error_message = "Only ses:SendEmail by default."
+  }
+
+  assert {
+    condition     = !contains(keys(jsondecode(aws_iam_policy.sender[0].policy).Statement[0]), "Condition")
+    error_message = "No condition without from_addresses."
   }
 }
 
@@ -60,9 +64,9 @@ run "sender_policy_restricts_from_addresses" {
 
   variables {
     sender = {
-      policy_name    = "app-mailer"
-      from_addresses = ["noreply@example.com", "*@notifications.example.com"]
-      allow_send_raw = false
+      policy_name           = "app-mailer"
+      from_addresses        = ["noreply@example.com", "*@notifications.example.com"]
+      allow_v1_raw_and_smtp = true
     }
   }
 
@@ -72,8 +76,8 @@ run "sender_policy_restricts_from_addresses" {
   }
 
   assert {
-    condition     = jsondecode(aws_iam_policy.sender[0].policy).Statement[0].Action == ["ses:SendEmail"]
-    error_message = "SendRawEmail must be excluded when allow_send_raw is false."
+    condition     = toset(jsondecode(aws_iam_policy.sender[0].policy).Statement[0].Action) == toset(["ses:SendEmail", "ses:SendRawEmail"])
+    error_message = "SendRawEmail must be added for v1 API and SMTP."
   }
 
   assert {
@@ -82,11 +86,70 @@ run "sender_policy_restricts_from_addresses" {
   }
 }
 
+run "sender_policy_includes_configuration_sets" {
+  command = apply
+
+  variables {
+    sender = {
+      configuration_set_arns = ["arn:aws:ses:eu-central-1:123456789012:configuration-set/default"]
+    }
+  }
+
+  assert {
+    condition     = contains(jsondecode(aws_iam_policy.sender[0].policy).Statement[0].Resource, "arn:aws:ses:eu-central-1:123456789012:configuration-set/default")
+    error_message = "Configuration set ARNs must be part of the policy resources."
+  }
+}
+
+run "default_policy_name_fits_iam_limit" {
+  command = apply
+
+  variables {
+    domain = "a-very-long-label-for-testing-the-iam-name-limit-of-the-module.another-long-label-to-reach-the-limit.example.com"
+    sender = {}
+  }
+
+  assert {
+    condition     = length(aws_iam_policy.sender[0].name) <= 128
+    error_message = "Default policy name must not exceed 128 characters."
+  }
+}
+
 run "rejects_invalid_from_address" {
   command = plan
 
   variables {
     sender = { from_addresses = ["not-an-address"] }
+  }
+
+  expect_failures = [var.sender]
+}
+
+run "rejects_from_address_outside_domain" {
+  command = plan
+
+  variables {
+    sender = { from_addresses = ["noreply@evil.org"] }
+  }
+
+  expect_failures = [var.sender]
+}
+
+run "rejects_uppercase_from_address" {
+  command = plan
+
+  variables {
+    sender = { from_addresses = ["NoReply@example.com"] }
+  }
+
+  expect_failures = [var.sender]
+}
+
+run "rejects_invalid_configuration_set_arn" {
+  command = plan
+
+  variables {
+    sender = { configuration_set_arns = ["default"] }
   }
 
   expect_failures = [var.sender]

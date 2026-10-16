@@ -24,5 +24,5 @@ resource "cloudflare_dns_record" "dkim" {
   content = "${local.dkim_tokens[count.index]}.dkim.amazonses.com"
   ttl     = var.dns_ttl
   proxied = false
-  comment = "SES Easy DKIM for ${var.domain}"
+  comment = substr("SES Easy DKIM for ${var.domain}", 0, 100)
 }

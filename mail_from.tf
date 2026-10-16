@@ -21,7 +21,7 @@ resource "cloudflare_dns_record" "mail_from_mx" {
   content  = "feedback-smtp.${data.aws_region.current.region}.amazonses.com"
   priority = 10
   ttl      = var.dns_ttl
-  comment  = "SES MAIL FROM for ${var.domain}"
+  comment  = substr("SES MAIL FROM for ${var.domain}", 0, 100)
 }
 
 resource "cloudflare_dns_record" "mail_from_spf" {
@@ -32,5 +32,5 @@ resource "cloudflare_dns_record" "mail_from_spf" {
   type    = "TXT"
   content = "\"v=spf1 include:amazonses.com ~all\""
   ttl     = var.dns_ttl
-  comment = "SES MAIL FROM SPF for ${var.domain}"
+  comment = substr("SES MAIL FROM SPF for ${var.domain}", 0, 100)
 }

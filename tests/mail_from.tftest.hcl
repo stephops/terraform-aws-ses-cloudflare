@@ -11,8 +11,7 @@ override_resource {
   values = {
     arn = "arn:aws:ses:eu-central-1:123456789012:identity/example.com"
     dkim_signing_attributes = {
-      next_signing_key_length = "RSA_2048_BIT"
-      tokens                  = ["tokena", "tokenb", "tokenc"]
+      tokens = ["tokena", "tokenb", "tokenc"]
     }
   }
 }
@@ -28,7 +27,7 @@ run "creates_mail_from_with_mx_and_spf" {
   command = apply
 
   assert {
-    condition     = aws_sesv2_email_identity_mail_from_attributes.this[0].mail_from_domain == "mail.example.com"
+    condition     = aws_sesv2_email_identity_mail_from_attributes.this[0].mail_from_domain == "bounce.example.com"
     error_message = "MAIL FROM domain must be <mail_from_subdomain>.<domain>."
   }
 
@@ -52,11 +51,11 @@ run "uses_custom_mail_from_subdomain" {
   command = apply
 
   variables {
-    mail_from_subdomain = "bounce"
+    mail_from_subdomain = "mailfrom"
   }
 
   assert {
-    condition     = cloudflare_dns_record.mail_from_mx[0].name == "bounce.example.com"
+    condition     = cloudflare_dns_record.mail_from_mx[0].name == "mailfrom.example.com"
     error_message = "Custom MAIL FROM subdomain must be used for the MX record."
   }
 }
@@ -76,6 +75,28 @@ run "skips_mail_from_when_null" {
   assert {
     condition     = output.mail_from_domain == null && output.mail_from_mx == null
     error_message = "MAIL FROM outputs must be null when disabled."
+  }
+}
+
+run "mail_from_on_subdomain_identity" {
+  command = apply
+
+  variables {
+    domain = "notifications.example.com"
+  }
+
+  assert {
+    condition     = cloudflare_dns_record.mail_from_mx[0].name == "bounce.notifications.example.com" && cloudflare_dns_record.mail_from_spf[0].name == "bounce.notifications.example.com"
+    error_message = "MAIL FROM of a subdomain identity must be below that subdomain."
+  }
+}
+
+run "records_are_never_proxied" {
+  command = apply
+
+  assert {
+    condition     = cloudflare_dns_record.mail_from_mx[0].proxied != true && cloudflare_dns_record.mail_from_spf[0].proxied != true
+    error_message = "MX and TXT records must not be proxied."
   }
 }
 

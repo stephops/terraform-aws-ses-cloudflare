@@ -3,15 +3,15 @@
 Terraform module that makes a Cloudflare-hosted domain ready for sending mail with Amazon SES.
 
 It creates the SES domain identity and writes the DNS records SES needs into the Cloudflare zone:
-DKIM, MAIL FROM (MX and SPF) and DMARC. If you want, it also creates an IAM policy that only allows
-sending from that identity. Works with Terraform and OpenTofu.
+DKIM and MAIL FROM (MX and SPF). Optionally it publishes a DMARC record and creates an IAM policy
+that only allows sending from that identity. Works with Terraform and OpenTofu.
 
 ## Usage
 
 ```hcl
 module "ses_sender" {
   source  = "StephOps/ses-cloudflare/aws"
-  version = "~> 0.1"
+  version = "~> 0.1.0"
 
   domain             = "example.com"
   cloudflare_zone_id = "0123456789abcdef0123456789abcdef"
@@ -37,19 +37,24 @@ Two complete examples are in [examples/basic](./examples/basic) and
 
 ## What it does
 
-The identity uses Easy DKIM with 2048-bit keys. The three DKIM records are CNAMEs and are never
-proxied, otherwise SES cannot verify them.
+The identity uses Easy DKIM with 2048-bit keys by default (`dkim_key_length`). The three DKIM
+records are CNAMEs and are never proxied, otherwise SES cannot verify them.
 
-MAIL FROM defaults to `mail.<domain>`. The MX record points to the SES feedback endpoint of the
+MAIL FROM defaults to `bounce.<domain>`. The MX record points to the SES feedback endpoint of the
 provider region, the SPF record includes `amazonses.com`. Set `mail_from_subdomain = null` to keep
-the SES default.
+the SES default. Make sure the name is not used yet: an existing CNAME blocks the MX record, an
+existing SPF record would end up as a second one.
 
-The DMARC record is built from the `dmarc` input. The default is `p=none`, so nothing gets rejected
-before you have seen the reports. Set `dmarc = null` if the domain already has a DMARC record that
-is managed somewhere else.
+DMARC is off by default. A domain must have exactly one DMARC record, a second one makes receivers
+ignore both. Set `dmarc = {}` for a record with `p=none`, or configure policy, alignment and report
+addresses. Without `rua` no reports are sent, so add an address if you want to see what happens
+before moving to `quarantine` or `reject`.
 
-The sender policy is optional and scoped to the identity ARN, optionally also to `ses:FromAddress`.
-The module does not create IAM users or access keys. Attach the policy to your own role.
+The sender policy is optional. It allows `ses:SendEmail` on the identity, optionally restricted to
+certain from addresses via `ses:FromAddress`. If you send with a configuration set, add its ARN to
+`configuration_set_arns`. `allow_v1_raw_and_smtp` adds `ses:SendRawEmail`, which is only needed for
+the SES v1 API and SMTP. The module does not create IAM users or access keys. Attach the policy to
+your own role.
 
 ## Things to know
 
@@ -59,23 +64,29 @@ SES verifies the domain on its own schedule. Usually this takes a few minutes, i
 New AWS accounts are in the SES sandbox and can only send to verified addresses. Production access
 has to be requested per region:
 [Request production access](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html).
+In the sandbox SES also checks the permission against the recipient identity, so a policy that is
+restricted to the sender identity can be denied there. This goes away with production access.
 
 The identity lives in the region of the AWS provider. For more than one sending region use one
-module instance per region.
+module instance per region. The default policy name contains the region, because IAM names are
+global.
 
 If `rua` points to another domain, that domain has to publish an authorization record
 (`<your-domain>._report._dmarc.<report-domain>`), otherwise reports are not delivered.
 
+`subdomain_policy` (`sp`) only has an effect on the DMARC record of the organizational domain.
+On a subdomain identity receivers ignore it.
+
 The Cloudflare provider reads `CLOUDFLARE_API_TOKEN`. The token needs Zone / DNS / Edit on this zone,
-nothing more.
+nothing more. The domain has to belong to the zone given in `cloudflare_zone_id`.
 
 ## Tests
 
 `make test` runs the unit tests with mocked providers and needs no credentials.
 
 `make test-integration` creates everything for real and destroys it afterwards. It needs AWS
-credentials, `CLOUDFLARE_API_TOKEN`, `TF_VAR_cloudflare_zone_id` and `TF_VAR_domain`. Use a
-throwaway subdomain for the latter.
+credentials, `AWS_REGION`, `CLOUDFLARE_API_TOKEN`, `TF_VAR_cloudflare_zone_id` and `TF_VAR_domain`.
+Use a throwaway subdomain for the latter.
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
@@ -90,8 +101,8 @@ throwaway subdomain for the latter.
 
 | Name | Version |
 | ---- | ------- |
-| <a name="provider_aws"></a> [aws](#provider\_aws) | 6.69.1 |
-| <a name="provider_cloudflare"></a> [cloudflare](#provider\_cloudflare) | 5.28.0 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | >= 6.0, < 7.0 |
+| <a name="provider_cloudflare"></a> [cloudflare](#provider\_cloudflare) | >= 5.0, < 6.0 |
 
 ## Modules
 
@@ -117,11 +128,11 @@ No modules.
 | <a name="input_cloudflare_zone_id"></a> [cloudflare\_zone\_id](#input\_cloudflare\_zone\_id) | ID of the Cloudflare zone that hosts the DNS records for the domain. | `string` | n/a | yes |
 | <a name="input_domain"></a> [domain](#input\_domain) | Domain to verify as SES sending identity, e.g. example.com or notifications.example.com. | `string` | n/a | yes |
 | <a name="input_dkim_key_length"></a> [dkim\_key\_length](#input\_dkim\_key\_length) | Key length for Easy DKIM: RSA\_2048\_BIT or RSA\_1024\_BIT. | `string` | `"RSA_2048_BIT"` | no |
-| <a name="input_dmarc"></a> [dmarc](#input\_dmarc) | DMARC record settings. Set to null to leave an existing DMARC record untouched. | <pre>object({<br/>    policy           = optional(string, "none")<br/>    subdomain_policy = optional(string)<br/>    percentage       = optional(number, 100)<br/>    rua              = optional(list(string), [])<br/>    alignment_dkim   = optional(string, "r")<br/>    alignment_spf    = optional(string, "r")<br/>  })</pre> | `{}` | no |
+| <a name="input_dmarc"></a> [dmarc](#input\_dmarc) | DMARC record to publish at \_dmarc.<domain>. Off by default. Only enable it if no other DMARC record exists for that name: two records invalidate both. | <pre>object({<br/>    policy           = optional(string, "none")<br/>    subdomain_policy = optional(string)<br/>    percentage       = optional(number, 100)<br/>    rua              = optional(list(string), [])<br/>    alignment_dkim   = optional(string, "r")<br/>    alignment_spf    = optional(string, "r")<br/>  })</pre> | `null` | no |
 | <a name="input_dns_ttl"></a> [dns\_ttl](#input\_dns\_ttl) | TTL in seconds for all DNS records. 1 means automatic in Cloudflare. | `number` | `3600` | no |
 | <a name="input_mail_from_behavior_on_mx_failure"></a> [mail\_from\_behavior\_on\_mx\_failure](#input\_mail\_from\_behavior\_on\_mx\_failure) | What SES does if the MAIL FROM MX record cannot be found: USE\_DEFAULT\_VALUE or REJECT\_MESSAGE. | `string` | `"USE_DEFAULT_VALUE"` | no |
-| <a name="input_mail_from_subdomain"></a> [mail\_from\_subdomain](#input\_mail\_from\_subdomain) | Subdomain used as custom MAIL FROM domain (<subdomain>.<domain>). Set to null to use the SES default. | `string` | `"mail"` | no |
-| <a name="input_sender"></a> [sender](#input\_sender) | Optional IAM policy that allows sending only from this identity. Attach it to your own role or user. Set to null to skip. | <pre>object({<br/>    policy_name    = optional(string)<br/>    from_addresses = optional(list(string), [])<br/>    allow_send_raw = optional(bool, true)<br/>  })</pre> | `null` | no |
+| <a name="input_mail_from_subdomain"></a> [mail\_from\_subdomain](#input\_mail\_from\_subdomain) | Subdomain used as custom MAIL FROM domain (<subdomain>.<domain>). Set to null to use the SES default. | `string` | `"bounce"` | no |
+| <a name="input_sender"></a> [sender](#input\_sender) | Optional IAM policy that allows sending only from this identity. Attach it to your own role or user. Set to null to skip. | <pre>object({<br/>    policy_name            = optional(string)<br/>    from_addresses         = optional(list(string), [])<br/>    configuration_set_arns = optional(list(string), [])<br/>    allow_v1_raw_and_smtp  = optional(bool, false)<br/>  })</pre> | `null` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | Tags applied to all AWS resources that support them. | `map(string)` | `{}` | no |
 
 ## Outputs
@@ -139,6 +150,6 @@ No modules.
 | <a name="output_sender_policy_json"></a> [sender\_policy\_json](#output\_sender\_policy\_json) | JSON of the IAM sender policy, e.g. to embed it inline elsewhere; null if not created. |
 <!-- END_TF_DOCS -->
 
-## License
+## Changelog and license
 
-MIT, see [LICENSE](./LICENSE).
+Changes are listed in [CHANGELOG.md](./CHANGELOG.md). MIT license, see [LICENSE](./LICENSE).

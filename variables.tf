@@ -3,8 +3,8 @@ variable "domain" {
   type        = string
 
   validation {
-    condition     = can(regex("^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}$", var.domain))
-    error_message = "domain must be a lowercase fully qualified domain name without trailing dot."
+    condition     = length(var.domain) <= 253 && can(regex("^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+([a-z]{2,63}|xn--[a-z0-9-]{1,59})$", var.domain))
+    error_message = "domain must be a lowercase fully qualified domain name without trailing dot, at most 253 characters."
   }
 }
 
@@ -32,7 +32,7 @@ variable "dkim_key_length" {
 variable "mail_from_subdomain" {
   description = "Subdomain used as custom MAIL FROM domain (<subdomain>.<domain>). Set to null to use the SES default."
   type        = string
-  default     = "mail"
+  default     = "bounce"
 
   validation {
     condition     = var.mail_from_subdomain == null || can(regex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$", var.mail_from_subdomain))
@@ -52,7 +52,7 @@ variable "mail_from_behavior_on_mx_failure" {
 }
 
 variable "dmarc" {
-  description = "DMARC record settings. Set to null to leave an existing DMARC record untouched."
+  description = "DMARC record to publish at _dmarc.<domain>. Off by default. Only enable it if no other DMARC record exists for that name: two records invalidate both."
   type = object({
     policy           = optional(string, "none")
     subdomain_policy = optional(string)
@@ -61,7 +61,7 @@ variable "dmarc" {
     alignment_dkim   = optional(string, "r")
     alignment_spf    = optional(string, "r")
   })
-  default = {}
+  default = null
 
   validation {
     condition     = var.dmarc == null || contains(["none", "quarantine", "reject"], try(var.dmarc.policy, "none"))
@@ -74,8 +74,8 @@ variable "dmarc" {
   }
 
   validation {
-    condition     = var.dmarc == null || (try(var.dmarc.percentage, 100) >= 0 && try(var.dmarc.percentage, 100) <= 100)
-    error_message = "dmarc.percentage must be between 0 and 100."
+    condition     = var.dmarc == null || (try(var.dmarc.percentage, 100) >= 0 && try(var.dmarc.percentage, 100) <= 100 && floor(try(var.dmarc.percentage, 100)) == try(var.dmarc.percentage, 100))
+    error_message = "dmarc.percentage must be a whole number between 0 and 100."
   }
 
   validation {
@@ -92,15 +92,29 @@ variable "dmarc" {
 variable "sender" {
   description = "Optional IAM policy that allows sending only from this identity. Attach it to your own role or user. Set to null to skip."
   type = object({
-    policy_name    = optional(string)
-    from_addresses = optional(list(string), [])
-    allow_send_raw = optional(bool, true)
+    policy_name            = optional(string)
+    from_addresses         = optional(list(string), [])
+    configuration_set_arns = optional(list(string), [])
+    allow_v1_raw_and_smtp  = optional(bool, false)
   })
   default = null
 
   validation {
-    condition     = var.sender == null || alltrue([for a in try(var.sender.from_addresses, []) : can(regex("^[^@\\s]+@[^@\\s]+$", a))])
-    error_message = "sender.from_addresses must be e-mail addresses; wildcards like *@example.com are allowed."
+    condition = var.sender == null || alltrue([
+      for a in try(var.sender.from_addresses, []) :
+      a == lower(a) && can(regex("^[^@\\s]+@[^@\\s]+$", a)) && (endswith(a, "@${var.domain}") || endswith(a, ".${var.domain}"))
+    ])
+    error_message = "sender.from_addresses must be lowercase addresses within the domain or its subdomains, e.g. noreply@<domain> or *@<domain>."
+  }
+
+  validation {
+    condition     = var.sender == null || alltrue([for a in try(var.sender.configuration_set_arns, []) : can(regex("^arn:aws[a-z-]*:ses:[a-z0-9-]+:[0-9]{12}:configuration-set/.+$", a))])
+    error_message = "sender.configuration_set_arns must be SES configuration set ARNs."
+  }
+
+  validation {
+    condition     = var.sender == null || try(var.sender.policy_name, null) == null || length(try(var.sender.policy_name, "")) <= 128
+    error_message = "sender.policy_name must be at most 128 characters."
   }
 }
 

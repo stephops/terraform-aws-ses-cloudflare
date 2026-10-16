@@ -27,7 +27,6 @@ run "apply_full_setup" {
     }
 
     sender = {
-      policy_name    = "ses-send-integration-test"
       from_addresses = ["noreply@${var.domain}"]
     }
 

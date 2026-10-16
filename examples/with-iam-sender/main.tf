@@ -18,7 +18,6 @@ module "ses_sender" {
   sender = {
     policy_name    = "app-mailer-ses-send"
     from_addresses = ["noreply@notifications.example.com"]
-    allow_send_raw = false
   }
 
   tags = {

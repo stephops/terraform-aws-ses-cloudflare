@@ -11,8 +11,7 @@ override_resource {
   values = {
     arn = "arn:aws:ses:eu-central-1:123456789012:identity/example.com"
     dkim_signing_attributes = {
-      next_signing_key_length = "RSA_2048_BIT"
-      tokens                  = ["tokena", "tokenb", "tokenc"]
+      tokens = ["tokena", "tokenb", "tokenc"]
     }
   }
 }
@@ -24,8 +23,21 @@ override_data {
   }
 }
 
-run "default_dmarc_is_monitoring_only" {
+run "no_dmarc_by_default" {
   command = apply
+
+  assert {
+    condition     = length(cloudflare_dns_record.dmarc) == 0 && output.dmarc_record == null
+    error_message = "DMARC must be opt-in, a second record would invalidate an existing one."
+  }
+}
+
+run "empty_dmarc_object_is_monitoring_only" {
+  command = apply
+
+  variables {
+    dmarc = {}
+  }
 
   assert {
     condition     = cloudflare_dns_record.dmarc[0].name == "_dmarc.example.com"
@@ -63,17 +75,38 @@ run "full_dmarc_policy" {
   }
 }
 
-run "skips_dmarc_when_null" {
+run "dmarc_on_subdomain_identity" {
   command = apply
 
   variables {
-    dmarc = null
+    domain = "notifications.example.com"
+    dmarc  = { policy = "reject" }
   }
 
   assert {
-    condition     = length(cloudflare_dns_record.dmarc) == 0 && output.dmarc_record == null
-    error_message = "No DMARC record may be managed when dmarc is null."
+    condition     = cloudflare_dns_record.dmarc[0].name == "_dmarc.notifications.example.com"
+    error_message = "DMARC for a subdomain identity must be published at the subdomain."
   }
+}
+
+run "rejects_fractional_percentage" {
+  command = plan
+
+  variables {
+    dmarc = { percentage = 50.5 }
+  }
+
+  expect_failures = [var.dmarc]
+}
+
+run "rejects_invalid_alignment" {
+  command = plan
+
+  variables {
+    dmarc = { alignment_dkim = "x" }
+  }
+
+  expect_failures = [var.dmarc]
 }
 
 run "rejects_invalid_policy" {

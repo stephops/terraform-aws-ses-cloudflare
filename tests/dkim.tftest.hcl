@@ -11,8 +11,7 @@ override_resource {
   values = {
     arn = "arn:aws:ses:eu-central-1:123456789012:identity/example.com"
     dkim_signing_attributes = {
-      next_signing_key_length = "RSA_2048_BIT"
-      tokens                  = ["tokena", "tokenb", "tokenc"]
+      tokens = ["tokena", "tokenb", "tokenc"]
     }
   }
 }
@@ -67,6 +66,44 @@ run "rejects_invalid_domain" {
   expect_failures = [var.domain]
 }
 
+run "accepts_punycode_tld" {
+  command = plan
+
+  variables {
+    domain = "example.xn--p1ai"
+  }
+}
+
+run "rejects_too_long_domain" {
+  command = plan
+
+  variables {
+    domain = "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij.abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij.abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij.abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij.abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij.com"
+  }
+
+  expect_failures = [var.domain]
+}
+
+run "rejects_invalid_dkim_key_length" {
+  command = plan
+
+  variables {
+    dkim_key_length = "RSA_4096_BIT"
+  }
+
+  expect_failures = [var.dkim_key_length]
+}
+
+run "rejects_invalid_ttl" {
+  command = plan
+
+  variables {
+    dns_ttl = 30
+  }
+
+  expect_failures = [var.dns_ttl]
+}
+
 run "rejects_invalid_zone_id" {
   command = plan
 
@@ -82,11 +119,12 @@ run "uses_custom_ttl" {
 
   variables {
     dns_ttl = 300
+    dmarc   = {}
   }
 
   assert {
-    condition     = alltrue([for r in cloudflare_dns_record.dkim : r.ttl == 300])
-    error_message = "dns_ttl must be applied to all DKIM records."
+    condition     = alltrue([for r in concat(cloudflare_dns_record.dkim, cloudflare_dns_record.mail_from_mx, cloudflare_dns_record.mail_from_spf, cloudflare_dns_record.dmarc) : r.ttl == 300])
+    error_message = "dns_ttl must be applied to every DNS record."
   }
 }
 
