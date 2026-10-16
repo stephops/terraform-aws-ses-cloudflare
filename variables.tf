@@ -79,7 +79,7 @@ variable "dmarc" {
   }
 
   validation {
-    condition     = var.dmarc == null || alltrue([for a in try(var.dmarc.rua, []) : can(regex("^[^@\\s]+@[^@\\s]+$", a))])
+    condition     = var.dmarc == null || alltrue([for a in try(var.dmarc.rua, []) : !startswith(lower(a), "mailto:") && can(regex("^[^@:\\s]+@[^@\\s]+\\.[^@\\s]+$", a))])
     error_message = "dmarc.rua must contain plain e-mail addresses (without mailto:)."
   }
 

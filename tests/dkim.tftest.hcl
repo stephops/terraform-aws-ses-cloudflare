@@ -17,6 +17,13 @@ override_resource {
   }
 }
 
+override_data {
+  target = data.aws_region.current
+  values = {
+    region = "eu-central-1"
+  }
+}
+
 run "creates_domain_identity" {
   command = apply
 
